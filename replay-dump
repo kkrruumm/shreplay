@@ -1,0 +1,62 @@
+#!/bin/sh
+set -eu
+
+BUFDIR="${REPLAY_BUFDIR:-${XDG_RUNTIME_DIR:-/tmp}/replay-buffer}"
+TAIL_SECS="${REPLAY_TAIL_SECS:-0}"
+OUTFILE="${1:-replay-$(date +%Y%m%d-%H%M%S).mkv}"
+
+DONE="$BUFDIR/pending.done.mkv"
+
+[ -f "$BUFDIR/pid" ] || {
+    echo "replay-dump: no active capture session (expected $BUFDIR/pid)" >&2
+    exit 1
+}
+
+CAP_PID=$(cat "$BUFDIR/pid")
+if [ -z "$CAP_PID" ] || ! kill -0 "$CAP_PID" 2>/dev/null; then
+    echo "replay-dump: capture process $CAP_PID is not running" >&2
+    exit 1
+fi
+
+# remove any stale done-file from a previous dump so we don't grab it by
+# mistake before the capture script has had a chance to publish a new one
+rm -f "$DONE"
+
+# ask the capture script to forward USR1 to wl-screenrec, which flushes
+# its history buffer to pending.mkv and starts appending live footage
+# once the capture script stops the recorder, it renames pending.mkv ->
+# pending.done.mkv, which is our signal that the clip is finalized
+kill -USR1 "$CAP_PID" 2>/dev/null || {
+    echo "replay-dump: failed to signal capture process" >&2
+    exit 1
+}
+
+# upper bound: tail window + 10s of slack, polled at 200ms
+max_iters=$(( (TAIL_SECS + 10) * 5 ))
+i=0
+while [ "$i" -lt "$max_iters" ]; do
+    if [ -f "$DONE" ]; then
+        break
+    fi
+    sleep 0.2
+    i=$((i + 1))
+done
+
+if [ ! -f "$DONE" ]; then
+    echo "replay-dump: capture script did not publish a finalized clip" >&2
+    exit 1
+fi
+
+if ! mv "$DONE" "$OUTFILE"; then
+    # mv across filesystems can fail so use cp+rm
+    if ! cp "$DONE" "$OUTFILE"; then
+        echo "replay-dump: failed to copy clip to $OUTFILE" >&2
+        exit 1
+    fi
+    rm -f "$DONE"
+fi
+
+command -v notify-send >/dev/null &&
+    notify-send 'Clip dumped' "$OUTFILE"
+
+echo "$OUTFILE"

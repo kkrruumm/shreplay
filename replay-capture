@@ -1,0 +1,192 @@
+#!/bin/sh
+set -eu
+
+FRAMERATE="${REPLAY_FRAMERATE:-60}"
+RECORDING_DEVICE="${REPLAY_DEVICE:-/dev/dri/renderD128}"
+OUTPUT="${REPLAY_OUTPUT:-DP-3}"
+BUFDIR="${REPLAY_BUFDIR:-${XDG_RUNTIME_DIR:-/tmp}/replay-buffer}"
+WINDOW_SECS="${REPLAY_WINDOW_SECS:-150}"  # 2.5 minutes
+# how long to keep appending live after a dump is triggered before we
+# stop the recorder and respawn. 0 = stop as soon as the flush is done
+TAIL_SECS="${REPLAY_TAIL_SECS:-0}"
+
+# encoder settings
+FFMPEG_ENCODER="${REPLAY_FFMPEG_ENCODER:-hevc_vaapi}"
+RC_MODE="${REPLAY_RC_MODE:-CQP}"
+QP="${REPLAY_QP:-22}"
+ENCODE_PIXFMT="${REPLAY_ENCODE_PIXFMT:-vuyx}"
+
+# audio sources
+MIC_SOURCE="$REPLAY_MIC_SOURCE"
+DESKTOP_SOURCE="$REPLAY_DESKTOP_SOURCE"
+DESKTOP_VOLUME="${REPLAY_DESKTOP_VOLUME:-23253}"
+
+command -v wl-screenrec >/dev/null 2>&1 || {
+    echo "replay-capture: wl-screenrec is required" >&2
+    exit 1
+}
+command -v pactl >/dev/null 2>&1 || {
+    echo "replay-capture: pactl is required" >&2
+    exit 1
+}
+
+mkdir -p "$BUFDIR"
+LOCKDIR="$BUFDIR/lock"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "replay-capture: another instance appears to be running (lock at $LOCKDIR)" >&2
+    exit 1
+fi
+printf '%s\n' "$$" > "$BUFDIR/pid"
+
+PENDING="$BUFDIR/pending.mkv"
+DONE="$BUFDIR/pending.done.mkv"
+
+MIX_SINK="replay_mix_$$"
+MIX_MONITOR="${MIX_SINK}.monitor"
+MIC_MODULE=
+DESKTOP_MODULE=
+SINK_MODULE=
+REC_PID=
+DUMP_REQUESTED=0
+QUIT=0
+
+setup_audio() {
+    SINK_MODULE=$(pactl load-module module-null-sink \
+        sink_name="$MIX_SINK" \
+        sink_properties=device.description="ReplayCaptureMix") || {
+        echo "replay-capture: failed to create mix sink" >&2
+        return 1
+    }
+
+    MIC_MODULE=$(pactl load-module module-loopback \
+        source="$MIC_SOURCE" \
+        sink="$MIX_SINK" \
+        latency_msec=20 \
+        source_dont_move=true \
+        sink_dont_move=true) || {
+        echo "replay-capture: failed to loopback mic" >&2
+        return 1
+    }
+
+    DESKTOP_MODULE=$(pactl load-module module-loopback \
+        source="$DESKTOP_SOURCE" \
+        sink="$MIX_SINK" \
+        latency_msec=20 \
+        source_dont_move=true \
+        sink_dont_move=true) || {
+        echo "replay-capture: failed to loopback desktop audio" >&2
+        return 1
+    }
+
+    i=0
+    while [ "$i" -lt 20 ]; do
+        SI=$(pactl -f json list sink-inputs 2>/dev/null \
+             | grep -B1 "\"module\": *\"$DESKTOP_MODULE\"" \
+             | grep -oE '"index": *[0-9]+' | head -n1 \
+             | grep -oE '[0-9]+') || true
+        if [ -n "${SI:-}" ]; then
+            pactl set-sink-input-volume "$SI" "$DESKTOP_VOLUME" 2>/dev/null || true
+            break
+        fi
+        i=$((i + 1))
+        sleep 0.1
+    done
+}
+
+stop_recorder() {
+    [ -z "${REC_PID:-}" ] && return
+    if kill -0 "$REC_PID" 2>/dev/null; then
+        kill -TERM "$REC_PID" 2>/dev/null || true
+        waited=0
+        while [ "$waited" -lt 30 ] && kill -0 "$REC_PID" 2>/dev/null; do
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        if kill -0 "$REC_PID" 2>/dev/null; then
+            kill -KILL "$REC_PID" 2>/dev/null || true
+        fi
+        wait "$REC_PID" 2>/dev/null || true
+    fi
+    unset REC_PID
+}
+
+cleanup() {
+    trap - INT TERM HUP USR1
+    stop_recorder
+    [ -n "$MIC_MODULE" ] && pactl unload-module "$MIC_MODULE" 2>/dev/null || true
+    [ -n "$DESKTOP_MODULE" ] && pactl unload-module "$DESKTOP_MODULE" 2>/dev/null || true
+    [ -n "$SINK_MODULE" ] && pactl unload-module "$SINK_MODULE" 2>/dev/null || true
+    rm -f "$BUFDIR/pid" "$PENDING"
+    rmdir "$LOCKDIR" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+on_quit() {
+    QUIT=1
+}
+trap on_quit INT TERM HUP
+
+# SIGUSR1 forward to wl-screenrec so it flushes its history buffer to
+# the pending file and starts appending live footage, the main loop sees
+# DUMP_REQUESTED=1, waits TAIL_SECS more, stops the recorder, then
+# renames pending.mkv -> pending.done.mkv as the "flush complete" signal
+# that replay-dump waits for
+on_dump() {
+    DUMP_REQUESTED=1
+    if [ -n "${REC_PID:-}" ] && kill -0 "$REC_PID" 2>/dev/null; then
+        kill -USR1 "$REC_PID" 2>/dev/null || true
+    fi
+}
+trap on_dump USR1
+
+setup_audio
+
+while [ "$QUIT" -eq 0 ]; do
+    # nuke any stale pending file from a crashed prior run
+    # or just from the previous loop cycle
+    rm -f "$PENDING"
+    DUMP_REQUESTED=0
+
+    wl-screenrec \
+        --ffmpeg-encoder "$FFMPEG_ENCODER" \
+        --ffmpeg-encoder-options "rc_mode=$RC_MODE,qp=$QP" \
+        --encode-pixfmt "$ENCODE_PIXFMT" \
+        --output "$OUTPUT" \
+        --history "$WINDOW_SECS" \
+        --audio \
+        --audio-device "$MIX_MONITOR" \
+        --filename "$PENDING" \
+        --max-fps "$FRAMERATE" \
+        --dri-device "$RECORDING_DEVICE" \
+        --ffmpeg-muxer matroska </dev/null >/dev/null &
+    REC_PID=$!
+
+    # idle here until a dump is requested or we're told to quit
+    while [ "$DUMP_REQUESTED" -eq 0 ] && [ "$QUIT" -eq 0 ]; do
+        if ! kill -0 "$REC_PID" 2>/dev/null; then
+            break
+        fi
+        sleep 1 &
+        wait $! 2>/dev/null || true
+    done
+
+    if [ "$QUIT" -eq 0 ] && [ "$DUMP_REQUESTED" -eq 1 ] && [ "$TAIL_SECS" -gt 0 ]; then
+        remaining="$TAIL_SECS"
+        while [ "$remaining" -gt 0 ] && [ "$QUIT" -eq 0 ]; do
+            sleep 1 &
+            wait $! 2>/dev/null || true
+            remaining=$((remaining - 1))
+        done
+    fi
+
+    stop_recorder
+
+    # if a dump was requested and the pending file exists,
+    # publish it for replay-dump by renaming, the dump script polls for
+    # this paths existence and treats it as the "flush complete" signal
+    if [ "$DUMP_REQUESTED" -eq 1 ] && [ -f "$PENDING" ]; then
+        mv -f "$PENDING" "$DONE"
+    fi
+
+    [ "$QUIT" -ne 0 ] && break
+done
