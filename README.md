@@ -61,8 +61,8 @@ All configuration is via environment variables. Both scripts read the same `REPL
   This does not have a default, look for your microphone in `pactl list sources short` to apply to this envvar. Example value: `alsa_input.usb-0c76_USB_PnP_Audio_Device-00.mono-fallback`
 * `REPLAY_DESKTOP_SOURCE` - Monitor source of the sink your desktop audio plays out of
   This does not have a default, look for a source name ending in `.monitor` in `pactl list sources short` to apply to this envvar. Example value: `alsa_output.usb-GuangZhou_FiiO_Electronics_Co._Ltd_FiiO_K5_Pro-00.analog-stereo.monitor`
-* `REPLAY_DESKTOP_VOLUME` - Raw PulseAudio volume value applied to the desktop loopbacks sink-input
-  Defaults to `23253`. `65536` is 100%, this exists because desktop audio is usually too loud relative to the mic in the final mix
+* `REPLAY_DESKTOP_VOLUME` - Raw PulseAudio volume value applied to the desktop loopbacks sink-input.
+  Defaults to `23253`. `65536` is 100%, this exists because desktop audio is usually too loud relative to the mic in the final mix.
 If you don't care about audio, the simplest path is to comment out the `setup_audio` call and the `--audio` / `--audio-device` flags in `replay-capture`
 
 # Files
