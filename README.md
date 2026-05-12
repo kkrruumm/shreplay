@@ -44,14 +44,14 @@ All configuration is via environment variables. Both scripts read the same `REPL
 
 # Encoder options
 
-* `REPLAY_FFMPEG_ENCODER` - ffmpeg encoder name
-  Defaults to `hevc_vaapi`
-* `REPLAY_RC_MODE` - Rate-control mode passed through to the VAAPI encoder
-  Defaults to `CQP`
-* `REPLAY_QP` - Quantization parameter for `CQP` mode
-  Defaults to `22`, lower is higher quality and larger files
-* `REPLAY_ENCODE_PIXFMT` - Pixel format passed to `wl-screenrec --encode-pixfmt`
-  Defaults to `vuyx`
+* `REPLAY_FFMPEG_ENCODER` - ffmpeg encoder name,
+  defaults to `hevc_vaapi`
+* `REPLAY_RC_MODE` - Rate-control mode passed through to the VAAPI encoder,
+  defaults to `CQP`
+* `REPLAY_QP` - Quantization parameter for `CQP` mode,
+  defaults to `22`, lower is higher quality and larger files
+* `REPLAY_ENCODE_PIXFMT` - Pixel format passed to `wl-screenrec --encode-pixfmt`,
+  defaults to `vuyx`
 
 # Audio options
 
