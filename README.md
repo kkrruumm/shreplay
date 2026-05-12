@@ -29,18 +29,18 @@ If you would like to specify a specific output location, such as to put `replay-
 
 All configuration is via environment variables. Both scripts read the same `REPLAY_BUFDIR` so they can find each other- the rest are read by `replay-capture` only.
  
-* `REPLAY_BUFDIR` - Directory used for the lock, pidfile, and pending clip
-  Defaults to `$XDG_RUNTIME_DIR/replay-buffer`, or `/tmp/replay-buffer` if `XDG_RUNTIME_DIR` is unset
-* `REPLAY_WINDOW_SECS` - How many seconds of history to keep buffered
-  Defaults to `150` (2.5 minutes)
-* `REPLAY_TAIL_SECS` - How many extra seconds to keep recording after a dump is triggered before the recorder is stopped
-  Defaults to `0`, meaning the clip ends at the moment `replay-dump` was invoked
-* `REPLAY_FRAMERATE` - Max framerate passed to `wl-screenrec`
-  Defaults to `60`
-* `REPLAY_OUTPUT` - Wayland output to record
-  Defaults to `DP-3`. Use `wlr-randr` or your compositors output list, `swaymsg -t get_outputs` for example, to find the right name
-* `REPLAY_DEVICE` - DRI render node passed to `wl-screenrec --dri-device`
-  Defaults to `/dev/dri/renderD128`
+* `REPLAY_BUFDIR` - Directory used for the lock, pidfile, and pending clip,
+  defaults to `$XDG_RUNTIME_DIR/replay-buffer`, or `/tmp/replay-buffer` if `XDG_RUNTIME_DIR` is unset
+* `REPLAY_WINDOW_SECS` - How many seconds of history to keep buffered,
+  defaults to `150` (2.5 minutes)
+* `REPLAY_TAIL_SECS` - How many extra seconds to keep recording after a dump is triggered before the recorder is stopped,
+  defaults to `0`, meaning the clip ends at the moment `replay-dump` was invoked
+* `REPLAY_FRAMERATE` - Max framerate passed to `wl-screenrec`,
+  defaults to `60`
+* `REPLAY_OUTPUT` - Wayland output to record,
+  defaults to `DP-3`. Use `wlr-randr` or your compositors output list, `swaymsg -t get_outputs` for example, to find the right name
+* `REPLAY_DEVICE` - DRI render node passed to `wl-screenrec --dri-device`,
+  defaults to `/dev/dri/renderD128`
 
 # Encoder options
 
@@ -57,12 +57,12 @@ All configuration is via environment variables. Both scripts read the same `REPL
 
 `replay-capture` creates a null sink, loopbacks the mic and the desktop monitor source into it, then points `wl-screenrec` at that sinks monitor. This is so the recorded audio contains both your voice and game/desktop audio mixed together.
  
-* `REPLAY_MIC_SOURCE` - PipeWire/PulseAudio source name for the microphone
-  This does not have a default, look for your microphone in `pactl list sources short` to apply to this envvar. Example value: `alsa_input.usb-0c76_USB_PnP_Audio_Device-00.mono-fallback`
-* `REPLAY_DESKTOP_SOURCE` - Monitor source of the sink your desktop audio plays out of
-  This does not have a default, look for a source name ending in `.monitor` in `pactl list sources short` to apply to this envvar. Example value: `alsa_output.usb-GuangZhou_FiiO_Electronics_Co._Ltd_FiiO_K5_Pro-00.analog-stereo.monitor`
-* `REPLAY_DESKTOP_VOLUME` - Raw PulseAudio volume value applied to the desktop loopbacks sink-input.
-  Defaults to `23253`. `65536` is 100%, this exists because desktop audio is usually too loud relative to the mic in the final mix.
+* `REPLAY_MIC_SOURCE` - PipeWire/PulseAudio source name for the microphone,
+  this does not have a default, look for your microphone in `pactl list sources short` to apply to this envvar. Example value: `alsa_input.usb-0c76_USB_PnP_Audio_Device-00.mono-fallback`
+* `REPLAY_DESKTOP_SOURCE` - Monitor source of the sink your desktop audio plays out of,
+  this does not have a default, look for a source name ending in `.monitor` in `pactl list sources short` to apply to this envvar. Example value: `alsa_output.usb-GuangZhou_FiiO_Electronics_Co._Ltd_FiiO_K5_Pro-00.analog-stereo.monitor`
+* `REPLAY_DESKTOP_VOLUME` - Raw PulseAudio volume value applied to the desktop loopbacks sink-input,
+  defaults to `23253`. `65536` is 100%, this exists because desktop audio is usually too loud relative to the mic in the final mix.
 If you don't care about audio, the simplest path is to comment out the `setup_audio` call and the `--audio` / `--audio-device` flags in `replay-capture`
 
 # Files
