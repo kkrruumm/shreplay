@@ -62,7 +62,8 @@ setup_audio() {
         source="$MIC_SOURCE" \
         sink="$MIX_SINK" \
         latency_msec=50 \
-        source_dont_move=true) || {
+        source_dont_move=true \
+        sink_dont_move=true) || {
         printf "%s\n" "replay-capture: failed to loopback mic" >&2
         return 1
     }
