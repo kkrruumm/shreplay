@@ -3,7 +3,7 @@ set -eu
 
 FRAMERATE="${REPLAY_FRAMERATE:-60}"
 RECORDING_DEVICE="${REPLAY_DEVICE:-/dev/dri/renderD128}"
-OUTPUT="${REPLAY_OUTPUT:-DP-3}"
+OUTPUT="$REPLAY_OUTPUT"
 BUFDIR="${REPLAY_BUFDIR:-${XDG_RUNTIME_DIR:-/tmp}/replay-buffer}"
 WINDOW_SECS="${REPLAY_WINDOW_SECS:-150}"  # 2.5 minutes
 # how long to keep appending live after a dump is triggered before we
@@ -16,24 +16,23 @@ RC_MODE="${REPLAY_RC_MODE:-CQP}"
 QP="${REPLAY_QP:-22}"
 ENCODE_PIXFMT="${REPLAY_ENCODE_PIXFMT:-vuyx}"
 
-# audio sources
+# audio stuff
+SAMPLE_RATE="${REPLAY_SAMPLE_RATE:-48000}"
 MIC_SOURCE="$REPLAY_MIC_SOURCE"
 DESKTOP_SOURCE="$REPLAY_DESKTOP_SOURCE"
 DESKTOP_VOLUME="${REPLAY_DESKTOP_VOLUME:-23253}"
 
-command -v wl-screenrec >/dev/null 2>&1 || {
-    echo "replay-capture: wl-screenrec is required" >&2
-    exit 1
-}
-command -v pactl >/dev/null 2>&1 || {
-    echo "replay-capture: pactl is required" >&2
-    exit 1
-}
+for i in wl-screenrec pactl ; do
+    command -v "$i" > /dev/null 2>&1 || {
+        printf "%s\n" "${i} not found in PATH. Cannot continue." >&2
+        exit 1
+    }
+done
 
 mkdir -p "$BUFDIR"
 LOCKDIR="$BUFDIR/lock"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
-    echo "replay-capture: another instance appears to be running (lock at $LOCKDIR)" >&2
+    printf "%s\n" "replay-capture: another instance appears to be running (lock at $LOCKDIR)" >&2
     exit 1
 fi
 printf '%s\n' "$$" > "$BUFDIR/pid"
@@ -52,29 +51,29 @@ QUIT=0
 
 setup_audio() {
     SINK_MODULE=$(pactl load-module module-null-sink \
+        rate="$SAMPLE_RATE" \
         sink_name="$MIX_SINK" \
         sink_properties=device.description="ReplayCaptureMix") || {
-        echo "replay-capture: failed to create mix sink" >&2
+        printf "%s\n" "replay-capture: failed to create mix sink" >&2
         return 1
     }
 
     MIC_MODULE=$(pactl load-module module-loopback \
         source="$MIC_SOURCE" \
         sink="$MIX_SINK" \
-        latency_msec=20 \
-        source_dont_move=true \
-        sink_dont_move=true) || {
-        echo "replay-capture: failed to loopback mic" >&2
+        latency_msec=50 \
+        source_dont_move=true) || {
+        printf "%s\n" "replay-capture: failed to loopback mic" >&2
         return 1
     }
 
     DESKTOP_MODULE=$(pactl load-module module-loopback \
         source="$DESKTOP_SOURCE" \
         sink="$MIX_SINK" \
-        latency_msec=20 \
+        latency_msec=50 \
         source_dont_move=true \
         sink_dont_move=true) || {
-        echo "replay-capture: failed to loopback desktop audio" >&2
+        printf "%s\n" "replay-capture: failed to loopback desktop audio" >&2
         return 1
     }
 
@@ -139,7 +138,7 @@ on_dump() {
 }
 trap on_dump USR1
 
-setup_audio
+setup_audio || exit 1
 
 while [ "$QUIT" -eq 0 ]; do
     # nuke any stale pending file from a crashed prior run
@@ -147,6 +146,7 @@ while [ "$QUIT" -eq 0 ]; do
     rm -f "$PENDING"
     DUMP_REQUESTED=0
 
+    sleep 1
     wl-screenrec \
         --ffmpeg-encoder "$FFMPEG_ENCODER" \
         --ffmpeg-encoder-options "rc_mode=$RC_MODE,qp=$QP" \

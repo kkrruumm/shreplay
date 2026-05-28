@@ -28,6 +28,8 @@ If you would like to specify a specific output location, such as to put `replay-
 # Options
 
 All configuration is via environment variables. Both scripts read the same `REPLAY_BUFDIR` so they can find each other- the rest are read by `replay-capture` only.
+
+These can all be set in `~/.profile` typically.
  
 * `REPLAY_BUFDIR` - Directory used for the lock, pidfile, and pending clip,
   defaults to `$XDG_RUNTIME_DIR/replay-buffer`, or `/tmp/replay-buffer` if `XDG_RUNTIME_DIR` is unset
@@ -38,7 +40,7 @@ All configuration is via environment variables. Both scripts read the same `REPL
 * `REPLAY_FRAMERATE` - Max framerate passed to `wl-screenrec`,
   defaults to `60`
 * `REPLAY_OUTPUT` - Wayland output to record,
-  defaults to `DP-3`. Use `wlr-randr` or your compositors output list, `swaymsg -t get_outputs` for example, to find the right name
+  this does not have a default. Use `wlr-randr` or your compositors output list, `swaymsg -t get_outputs` for example, to find the right name
 * `REPLAY_DEVICE` - DRI render node passed to `wl-screenrec --dri-device`,
   defaults to `/dev/dri/renderD128`
 
@@ -56,7 +58,10 @@ All configuration is via environment variables. Both scripts read the same `REPL
 # Audio options
 
 `replay-capture` creates a null sink, loopbacks the mic and the desktop monitor source into it, then points `wl-screenrec` at that sinks monitor. This is so the recorded audio contains both your voice and game/desktop audio mixed together.
- 
+
+When using this, you should make sure that both your microphone and desktop audio interface are running at the same sample rate. Otherwise, you may have some audio desync.
+
+* `REPLAY_SAMPLE_RATE` - Sample rate to apply to the new mixed sink. Defaults to `48000`.
 * `REPLAY_MIC_SOURCE` - PipeWire/PulseAudio source name for the microphone,
   this does not have a default, look for your microphone in `pactl list sources short` to apply to this envvar. Example value: `alsa_input.usb-0c76_USB_PnP_Audio_Device-00.mono-fallback`
 * `REPLAY_DESKTOP_SOURCE` - Monitor source of the sink your desktop audio plays out of,
