@@ -2,6 +2,8 @@
 
 A simple shadowplay/relive/OBS replay buffer-esque setup for wlroots compositors (and maybe others?) written in POSIX shell
 
+NOTE: this does not work well at the moment due to github.com/russelltg/wl-screenrec/issues/46
+
 # Dependencies
 
 * `wl-screenrec`: https://github.com/russelltg/wl-screenrec/
